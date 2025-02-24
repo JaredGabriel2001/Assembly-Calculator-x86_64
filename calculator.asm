@@ -1,12 +1,12 @@
 ; Montagem/Linkagem (exemplo com NASM e GCC):
-;     nasm -f elf64 exercicio2.asm -o exercicio2.o
-;     gcc exercicio2.o -o exercicio2
+;     nasm -f elf64 calc.asm -o calc.o
+;     gcc calc.o -o calc
 ;---------------------------------------------------------------
 
 section .data
     filename    db "saida.txt", 0
     mode        db "a", 0
-    usage       db "Uso: ./exercicio2 <operando1> <operador> <operando2>", 10, 0
+    usage       db "Uso: ./calc <operando1> <operador> <operando2>", 10, 0
     err_op      db "Operador invalido. Use a (adicao), s (subtracao), m (multiplicacao) ou d (divisao).", 10, 0
 
 section .rodata
