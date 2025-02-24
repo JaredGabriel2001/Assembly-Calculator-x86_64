@@ -1,5 +1,5 @@
 ; Montagem/Linkagem (exemplo com NASM e GCC):
-;     nasm -f elf64 calc.asm -o calc.o; ld calc.o -o calc.x
+;     nasm -f elf64 calc.asm -o calc.o; gcc calc.o -o calc.x
 ;---------------------------------------------------------------
 
 section .data
