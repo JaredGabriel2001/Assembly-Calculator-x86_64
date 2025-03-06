@@ -3,8 +3,6 @@
 section .data
     solok : db "%.2lf %c %.2lf = %.2lf", 10, 0
     solnotok : db "%.2lf %c %.2lf = funcionalidade não disponível", 10, 0
-    prinleitura : db "equação: ", 0
-    scanctl : db "%f %c %f", 0
     file : db "saida.txt", 0
     openmode : db "a+"
     vone : dd 1.0
@@ -19,70 +17,55 @@ section .bss
 
 section .text
     extern printf
-    extern scanf
     extern fprintf
     extern fopen
     extern fclose
+    extern sscanf
     global main
-
 
 main:
     push rbp
     mov rbp, rsp
 
+    ; Abre o arquivo de saída
     mov rdi, file
     mov rsi, openmode
     call fopen
-
     mov [signaturefile], rax
 
-    mov rdi, prinleitura
-    call printf
+    ; Prepara os parâmetros para leitura da linha de comando
+    mov rdi, rdx          ; argv[1]
+    mov rsi, r8           ; argv[2]
+    mov rdx, r9           ; argv[3]
 
-    ;chama a função scanf
-    xor rax, rax
-    mov rdi, scanctl
-    lea rsi, [op1]
-    lea rdx, [op]
-    lea rcx, [op2]
-    call scanf
+    ; Converte os parâmetros
+    lea rax, [op1]
+    lea rcx, [op]
+    lea rdx, [op2]
+    call sscanf
 
-    ;passa os operandos para os registradores de parametros
+    ; Passa os operandos para os registradores de parâmetros
     movss xmm0, dword [op1]
     movss xmm1, dword [op2]
-    movss xmm3, dword [op1]
-    movss xmm4, dword [op2]
 
-    ;comparador para escolher qual instrução usar
-    ;move o char para r8b (por causa da compatibilidade do tamanho)
+    ; Move o operador para r8b
     mov r8b, [op]
-    
+
+    ; Seleciona a instrução a ser usada com base no operador
     cmp r8b, 'a'
     je callsoma
-    
-    cmp r8b, 's' 
-    je callmenos 
+
+    cmp r8b, 's'
+    je callmenos
 
     cmp r8b, 'm'
-    je callmult 
+    je callmult
 
     cmp r8b, 'd'
-    je calldivide 
+    je calldivide
 
-    cmp r8b, 'e'
-    je callexp
-
-end:
-    mov rdi, qword[signaturefile]
-    call fclose
-
-    mov rsp, rbp   
-    pop rbp
-
-    mov rax, 60
-    mov rdi, 0
-    syscall
-
+    ; Se o operador não for reconhecido, encerra o programa
+    jmp end
 
 callsoma:
     mov r8b, "+"
@@ -100,10 +83,6 @@ calldivide:
     mov r8b, "/"
     call divisao
 
-callexp:
-    mov r8b, "^"
-    call exponenciacao
-
 adicao:
     push rbp
     mov rbp, rsp
@@ -120,7 +99,7 @@ subtracao:
     push rbp
     mov rbp, rsp
 
-    subss xmm0, xmm1  
+    subss xmm0, xmm1
     jmp solucaook
 
     mov rsp, rbp
@@ -142,7 +121,7 @@ multiplicacao:
 
 divisao:
     push rbp
-    mov rbp, rsp 
+    mov rbp, rsp
 
     cvtss2si r9, xmm1
 
@@ -158,66 +137,12 @@ divisao:
 
     ret
 
-    indisponivel1:
-        jmp solucaonotok
-        mov rsp, rbp
-        pop rbp
+indisponivel1:
+    jmp solucaonotok
+    mov rsp, rbp
+    pop rbp
 
-        ret
-
-exponenciacao:
-    push rbp
-    mov rbp, rsp
-
-    movss xmm2, xmm0
-    cvtss2si r9, xmm1
-
-    mov r11, 0
-    cmp r9, r11
-    jl indisponivel2
-
-    mov r10, 1
-    cmp r10, r9
-    je igual
-    jg zero
-
-    for:
-        mulss xmm0, xmm2
-        inc r10
-        cmp r10, r9
-        jl for
-
-        jmp solucaook
-
-        mov rsp, rbp
-        pop rbp
-        ret
-
-    igual:
-        jmp solucaook
-
-        mov rsp, rbp
-        pop rbp
-        ret
-
-    zero:
-        movss xmm0, dword[vone]
-
-        jmp solucaook
-
-        mov rsp, rbp
-        pop rbp
-        ret
-
-    indisponivel2:
-        jmp solucaonotok
-        mov rsp, rbp
-        pop rbp
-
-        ret
-
-    
-
+    ret
 
 solucaook:
     call escrevesolucaook
@@ -232,7 +157,7 @@ escrevesolucaook:
     mov rbp, rsp
 
     mov rax, 2
-    mov rdi, qword[signaturefile]
+    mov rdi, qword [signaturefile]
     mov rsi, solok
     cvtss2sd xmm2, xmm0
     cvtss2sd xmm1, [op2]
@@ -243,21 +168,31 @@ escrevesolucaook:
     mov rsp, rbp
     pop rbp
     ret
-    
+
 escrevesolucaonotok:
     push rbp
     mov rbp, rsp
 
     mov rax, 2
-    mov rdi, qword[signaturefile]
+    mov rdi, qword [signaturefile]
     mov rsi, solnotok
     cvtss2sd xmm1, [op2]
     mov rdx, r8
     cvtss2sd xmm0, [op1]
     call fprintf
 
-    movss xmm0, dword[controle]
+    movss xmm0, dword [controle]
     mov rsp, rbp
     pop rbp
     ret
 
+end:
+    mov rdi, qword [signaturefile]
+    call fclose
+
+    mov rsp, rbp
+    pop rbp
+
+    mov rax, 60
+    mov rdi, 0
+    syscall
