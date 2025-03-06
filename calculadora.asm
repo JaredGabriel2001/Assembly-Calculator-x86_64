@@ -1,140 +1,119 @@
-; nasm -f elf64 calculadora.asm -o calculadora.o
-; gcc -m64 -no-pie calculadora.o -o calculadora.x
+; nasm -f elf64 calculadora.asm && gcc -m64 -no-pie calculadora.o -o calculadora.x
 
 section .data
-    solok       db "%.2lf + %.2lf = %.2lf", 10, 0
-    solnotok    db "Erro: operação não suportada", 10, 0
-    usage       db "Uso: ./calculadora.x <op1> a <op2>", 10, 0
-    file        db "saida.txt", 0
-    openmode    db "a+", 0
-    vzero       dd 0.0
+    solok     : db "%.2lf + %.2lf = %.2lf", 10, 0  ; Formato de saída
+    file      : db "saida.txt", 0                 ; Nome do arquivo
+    openmode  : db "w", 0                         ; Modo de abertura do arquivo
+    fmt_float : db "%f", 0                        ; Formato para sscanf
 
 section .bss
-    op1             resd 1          ; primeiro operando (float)
-    op2             resd 1          ; segundo operando (float)
-    signaturefile   resq 1          ; ponteiro FILE* (8 bytes)
+    op1      : resd 1       ; primeiro operando (float)
+    op2      : resd 1       ; segundo operando (float)
+    fileptr  : resq 1       ; ponteiro para o arquivo (FILE *)
 
 section .text
-    extern printf
-    extern fprintf
     extern fopen
     extern fclose
-    extern atof
+    extern fprintf
+    extern sscanf
     global main
 
-;============================
-; Função de soma
-;============================
-adicao:
-    push rbp
-    mov rbp, rsp
-    addss xmm0, xmm1          ; soma op1 (xmm0) + op2 (xmm1)
-    pop rbp
-    ret
-
-;============================
-; Função de escrita
-;============================
-escreve_solucao:
-    push rbp
-    mov rbp, rsp
-    ; Chama fprintf(signaturefile, solok, op1, op2, resultado)
-    mov rdi, qword [signaturefile]  ; ponteiro do arquivo
-    lea rsi, [solok]                ; formato "%.2lf + %.2lf = %.2lf"
-    ; Converte op1 (float) para double e passa para rdx
-    movss xmm2, dword [op1]
-    cvtss2sd xmm2, xmm2
-    movq rdx, xmm2
-    ; Converte op2 (float) para double e passa para r8
-    movss xmm3, dword [op2]
-    cvtss2sd xmm3, xmm3
-    movq r8, xmm3
-    ; Converte o resultado (xmm0) para double e passa para r9
-    cvtss2sd xmm0, xmm0
-    movq r9, xmm0
-    ; Chama fprintf
-    call fprintf
-    pop rbp
-    ret
-
-;============================
-; Função main
-;============================
 main:
     push rbp
-    mov rbp, rsp
-    sub rsp, 8                     ; Alinha a pilha a 16 bytes
+    mov  rbp, rsp
+    push rbx          ; preservar rbx
+    push r12          ; preservar r12
+    push r13          ; preservar r13
 
-    ; Preserva argv (que está em rsi) em r10
-    mov r10, rsi                   ; r10 = argv
+    ; main(int argc, char **argv):
+    ;   rdi = argc
+    ;   rsi = argv
+    mov  r12, rdi     ; r12 <- argc
+    mov  r13, rsi     ; r13 <- argv
 
-    ; Verifica se argc (rdi) >= 4
-    cmp rdi, 4
-    jl usage_label
+    ; Verifica se existem ao menos 3 argumentos: argv[0], argv[1], argv[2]
+    cmp  r12, 3
+    jl   fim
 
-    ; Abre o arquivo de saída ("saida.txt" em modo "a+")
-    lea rdi, [file]
-    lea rsi, [openmode]
+    ; Abre o arquivo de saída
+    mov  rdi, file
+    mov  rsi, openmode
     call fopen
-    mov [signaturefile], rax       ; Salva o ponteiro FILE*
+    mov  [fileptr], rax
 
-    ; Converte argv[1] -> op1 (float)
-    mov rax, [r10 + 8]             ; argv[1]
-    mov rdi, rax
-    call atof
-    cvtsd2ss xmm0, xmm0
-    movss dword [op1], xmm0
+    ; rbx apontará para o vetor argv preservado em r13
+    mov  rbx, r13
 
-    ; Lê o operador de argv[2]
-    mov rax, [r10 + 16]            ; argv[2]
-    mov al, [rax]
-    cmp al, 'a'
-    jne error_label                ; Se não for 'a', erro
+    ; Converte argv[1] para float e armazena em op1
+    mov  rdi, [rbx+8]    ; argv[1]
+    mov  rsi, fmt_float
+    lea  rdx, [op1]
+    call sscanf
 
-    ; Converte argv[3] -> op2 (float)
-    mov rax, [r10 + 24]            ; argv[3]
-    mov rdi, rax
-    call atof
-    cvtsd2ss xmm0, xmm0
-    movss dword [op2], xmm0
+    ; Converte argv[2] para float e armazena em op2
+    mov  rdi, [rbx+16]   ; argv[2]
+    mov  rsi, fmt_float
+    lea  rdx, [op2]
+    call sscanf
 
-    ; Carrega operandos para a soma
-    movss xmm0, dword [op1]
-    movss xmm1, dword [op2]
-    ; Chama a função de soma
-    call adicao
-    ; Chama a função de escrita com o resultado
-    call escreve_solucao
-    jmp exit_label
+    ; Realiza a soma em ponto flutuante (float)
+    movss xmm0, [op1]     ; xmm0 = op1 (float)
+    movss xmm1, [op2]     ; xmm1 = op2 (float)
+    addss xmm0, xmm1      ; xmm0 = op1 + op2 (float) -> resultado
 
-;============================
-; Rótulos de erro e saída
-;============================
-error_label:
-    ; Exibe mensagem de erro
-    lea rdi, [solnotok]
-    call printf
-    jmp exit_label
+    ; -- Agora precisamos dos valores em double --
+    ; Convertemos op1, op2 e o resultado para double
+    movss xmm2, [op1]     ; xmm2 = op1 (float)
+    cvtss2sd xmm2, xmm2   ; xmm2 = (double) op1
 
-usage_label:
-    ; Exibe mensagem de uso
-    lea rdi, [usage]
-    call printf
-    jmp exit_label
+    movss xmm3, [op2]     ; xmm3 = op2 (float)
+    cvtss2sd xmm3, xmm3   ; xmm3 = (double) op2
 
-exit_label:
+    cvtss2sd xmm0, xmm0   ; xmm0 = (double) resultado
+
+    ; Precisamos chamar fprintf(FILE*, const char*, double, double, double)
+    ; Para função variádica:
+    ;   - rdi = FILE*
+    ;   - rsi = ponteiro para o formato
+    ;   - xmm0 = 1º double
+    ;   - xmm1 = 2º double
+    ;   - xmm2 = 3º double
+    ;   - AL = número de valores flutuantes passados via XMM
+    ;
+    ; Queremos imprimir: op1, op2, resultado
+    ; op1 (double) está em xmm2, op2 (double) em xmm3, resultado em xmm0
+    ; Precisamos reordernar para XMM0, XMM1, XMM2 na ordem op1, op2, resultado
+
+    ; Salva o resultado temporariamente
+    movapd xmm4, xmm0    ; xmm4 = resultado
+
+    ; XMM0 <- op1
+    movapd xmm0, xmm2
+
+    ; XMM1 <- op2
+    movapd xmm1, xmm3
+
+    ; XMM2 <- resultado
+    movapd xmm2, xmm4
+
+    ; Agora setamos AL = 3 (pois temos 3 doubles em XMM0..XMM2)
+    mov  rdi, [fileptr]   ; FILE*
+    mov  rsi, solok       ; formato
+    mov  al, 3
+    call fprintf
+
     ; Fecha o arquivo
-    mov rdi, qword [signaturefile]
+    mov  rdi, [fileptr]
     call fclose
-    ; Restaura pilha e finaliza
-    add rsp, 8
-    mov rsp, rbp
-    pop rbp
-    mov rax, 60
-    xor rdi, rdi
-    syscall
 
-;============================
-; Seção para evitar aviso de stack executável
-;============================
-section .note.GNU-stack noexec nowrite progbits
+fim:
+    ; Restaura registradores e finaliza
+    pop  r13
+    pop  r12
+    pop  rbx
+    mov  rsp, rbp
+    pop  rbp
+
+    mov  rax, 60
+    xor  rdi, rdi
+    syscall
