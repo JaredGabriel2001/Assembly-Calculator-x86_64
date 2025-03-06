@@ -1,198 +1,140 @@
-; nasm -f elf64 calculadora.asm ; gcc -m64 -no-pie calculadora.o -o calculadora.x
+; nasm -f elf64 calculadora.asm -o calculadora.o
+; gcc -m64 -no-pie calculadora.o -o calculadora.x
 
 section .data
-    solok : db "%.2lf %c %.2lf = %.2lf", 10, 0
-    solnotok : db "%.2lf %c %.2lf = funcionalidade não disponível", 10, 0
-    file : db "saida.txt", 0
-    openmode : db "a+"
-    vone : dd 1.0
-    vzero : dd 0.0
-    controle : db "X", 0
+    solok       db "%.2lf + %.2lf = %.2lf", 10, 0
+    solnotok    db "Erro: operação não suportada", 10, 0
+    usage       db "Uso: ./calculadora.x <op1> a <op2>", 10, 0
+    file        db "saida.txt", 0
+    openmode    db "a+", 0
+    vzero       dd 0.0
 
 section .bss
-    op : resb 1
-    op1 : resd 1
-    op2 : resd 1
-    signaturefile : resd 1
+    op1             resd 1          ; primeiro operando (float)
+    op2             resd 1          ; segundo operando (float)
+    signaturefile   resq 1          ; ponteiro FILE* (8 bytes)
 
 section .text
     extern printf
     extern fprintf
     extern fopen
     extern fclose
-    extern sscanf
+    extern atof
     global main
 
-main:
-    push rbp
-    mov rbp, rsp
-
-    ; Abre o arquivo de saída
-    mov rdi, file
-    mov rsi, openmode
-    call fopen
-    mov [signaturefile], rax
-
-    ; Prepara os parâmetros para leitura da linha de comando
-    mov rdi, rdx          ; argv[1]
-    mov rsi, r8           ; argv[2]
-    mov rdx, r9           ; argv[3]
-
-    ; Converte os parâmetros
-    lea rax, [op1]
-    lea rcx, [op]
-    lea rdx, [op2]
-    call sscanf
-
-    ; Passa os operandos para os registradores de parâmetros
-    movss xmm0, dword [op1]
-    movss xmm1, dword [op2]
-
-    ; Move o operador para r8b
-    mov r8b, [op]
-
-    ; Seleciona a instrução a ser usada com base no operador
-    cmp r8b, 'a'
-    je callsoma
-
-    cmp r8b, 's'
-    je callmenos
-
-    cmp r8b, 'm'
-    je callmult
-
-    cmp r8b, 'd'
-    je calldivide
-
-    ; Se o operador não for reconhecido, encerra o programa
-    jmp end
-
-callsoma:
-    mov r8b, "+"
-    call adicao
-
-callmenos:
-    mov r8b, "-"
-    call subtracao
-
-callmult:
-    mov r8b, "*"
-    call multiplicacao
-
-calldivide:
-    mov r8b, "/"
-    call divisao
-
+;============================
+; Função de soma
+;============================
 adicao:
     push rbp
     mov rbp, rsp
-
-    addss xmm0, xmm1
-    jmp solucaook
-
-    mov rsp, rbp
+    addss xmm0, xmm1          ; soma op1 (xmm0) + op2 (xmm1)
     pop rbp
-
     ret
 
-subtracao:
+;============================
+; Função de escrita
+;============================
+escreve_solucao:
     push rbp
     mov rbp, rsp
-
-    subss xmm0, xmm1
-    jmp solucaook
-
-    mov rsp, rbp
-    pop rbp
-
-    ret
-
-multiplicacao:
-    push rbp
-    mov rbp, rsp
-
-    mulss xmm0, xmm1
-    jmp solucaook
-
-    mov rsp, rbp
-    pop rbp
-
-    ret
-
-divisao:
-    push rbp
-    mov rbp, rsp
-
-    cvtss2si r9, xmm1
-
-    mov r11, 0
-    cmp r9, r11
-    je indisponivel1
-
-    divss xmm0, xmm1
-    jmp solucaook
-
-    mov rsp, rbp
-    pop rbp
-
-    ret
-
-indisponivel1:
-    jmp solucaonotok
-    mov rsp, rbp
-    pop rbp
-
-    ret
-
-solucaook:
-    call escrevesolucaook
-    jmp end
-
-solucaonotok:
-    call escrevesolucaonotok
-    jmp end    
-
-escrevesolucaook:
-    push rbp
-    mov rbp, rsp
-
-    mov rax, 2
-    mov rdi, qword [signaturefile]
-    mov rsi, solok
-    cvtss2sd xmm2, xmm0
-    cvtss2sd xmm1, [op2]
-    mov rdx, r8
-    cvtss2sd xmm0, [op1]
+    ; Chama fprintf(signaturefile, solok, op1, op2, resultado)
+    mov rdi, qword [signaturefile]  ; ponteiro do arquivo
+    lea rsi, [solok]                ; formato "%.2lf + %.2lf = %.2lf"
+    ; Converte op1 (float) para double e passa para rdx
+    movss xmm2, dword [op1]
+    cvtss2sd xmm2, xmm2
+    movq rdx, xmm2
+    ; Converte op2 (float) para double e passa para r8
+    movss xmm3, dword [op2]
+    cvtss2sd xmm3, xmm3
+    movq r8, xmm3
+    ; Converte o resultado (xmm0) para double e passa para r9
+    cvtss2sd xmm0, xmm0
+    movq r9, xmm0
+    ; Chama fprintf
     call fprintf
-
-    mov rsp, rbp
     pop rbp
     ret
 
-escrevesolucaonotok:
+;============================
+; Função main
+;============================
+main:
     push rbp
     mov rbp, rsp
+    sub rsp, 8                     ; Alinha a pilha a 16 bytes
 
-    mov rax, 2
-    mov rdi, qword [signaturefile]
-    mov rsi, solnotok
-    cvtss2sd xmm1, [op2]
-    mov rdx, r8
-    cvtss2sd xmm0, [op1]
-    call fprintf
+    ; Preserva argv (que está em rsi) em r10
+    mov r10, rsi                   ; r10 = argv
 
-    movss xmm0, dword [controle]
-    mov rsp, rbp
-    pop rbp
-    ret
+    ; Verifica se argc (rdi) >= 4
+    cmp rdi, 4
+    jl usage_label
 
-end:
+    ; Abre o arquivo de saída ("saida.txt" em modo "a+")
+    lea rdi, [file]
+    lea rsi, [openmode]
+    call fopen
+    mov [signaturefile], rax       ; Salva o ponteiro FILE*
+
+    ; Converte argv[1] -> op1 (float)
+    mov rax, [r10 + 8]             ; argv[1]
+    mov rdi, rax
+    call atof
+    cvtsd2ss xmm0, xmm0
+    movss dword [op1], xmm0
+
+    ; Lê o operador de argv[2]
+    mov rax, [r10 + 16]            ; argv[2]
+    mov al, [rax]
+    cmp al, 'a'
+    jne error_label                ; Se não for 'a', erro
+
+    ; Converte argv[3] -> op2 (float)
+    mov rax, [r10 + 24]            ; argv[3]
+    mov rdi, rax
+    call atof
+    cvtsd2ss xmm0, xmm0
+    movss dword [op2], xmm0
+
+    ; Carrega operandos para a soma
+    movss xmm0, dword [op1]
+    movss xmm1, dword [op2]
+    ; Chama a função de soma
+    call adicao
+    ; Chama a função de escrita com o resultado
+    call escreve_solucao
+    jmp exit_label
+
+;============================
+; Rótulos de erro e saída
+;============================
+error_label:
+    ; Exibe mensagem de erro
+    lea rdi, [solnotok]
+    call printf
+    jmp exit_label
+
+usage_label:
+    ; Exibe mensagem de uso
+    lea rdi, [usage]
+    call printf
+    jmp exit_label
+
+exit_label:
+    ; Fecha o arquivo
     mov rdi, qword [signaturefile]
     call fclose
-
+    ; Restaura pilha e finaliza
+    add rsp, 8
     mov rsp, rbp
     pop rbp
-
     mov rax, 60
-    mov rdi, 0
+    xor rdi, rdi
     syscall
+
+;============================
+; Seção para evitar aviso de stack executável
+;============================
+section .note.GNU-stack noexec nowrite progbits
