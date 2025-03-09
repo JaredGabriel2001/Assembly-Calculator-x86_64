@@ -81,8 +81,38 @@ divisao:
 
         ret
 main:
-    
+    push rbp
+    mov rbp, rsp
+    and rsp, -16 ; Alinha a pilha para fopen e atof
 
+    ; Abre o arquivo para escrita
+    mov rdi, file_name
+    mov rsi, file_mode
+    call fopen
+    mov [arquivo], rax
+
+    ; adicionar leitura de <operando1> <operadora> <operando2> via linha de comando
+    cmp edi, 4 ; Verifica se há 3 argumentos (mais o nome do programa)
+    jne erro_argumentos
+
+    mov rdi, [rsi + 8] ; Primeiro argumento (operando1)
+    call atof
+    movss [operando1], xmm0
+
+    mov rdi, [rsi + 16] ; Segundo argumento (operador)
+    mov al, [rdi]
+    mov [operador], al
+
+    mov rdi, [rsi + 24] ; Terceiro argumento (operando2)
+    call atof
+    movss [operando2], xmm0
+
+    ;passa os operandos para os registradores de parametros
+    movss xmm0, dword [operando1]
+    movss xmm1, dword [operando2]
+
+    ;comparador para escolher qual instrução usar
+    ;move o char para r8b (por causa da compatibilidade do tamanho)
     mov r8b, [operador]
     
     cmp r8b, 'a'
@@ -96,6 +126,8 @@ main:
 
     cmp r8b, 'd'
     je divisao 
+
+    jmp solucaonotok ; Operador inválido
 
 end:
     mov rdi, qword[arquivo]
@@ -122,11 +154,11 @@ escrevesolucaook:
 
     mov rax, 2
     mov rdi, qword[arquivo]
-    mov rsi, solok
+    mov rsi, output_ok_format
     cvtss2sd xmm2, xmm0
-    cvtss2sd xmm1, [op2]
+    cvtss2sd xmm1, [operando2]
     mov rdx, r8
-    cvtss2sd xmm0, [op1]
+    cvtss2sd xmm0, [operando1]
     call fprintf
 
     mov rsp, rbp
@@ -139,10 +171,10 @@ escrevesolucaonotok:
 
     mov rax, 2
     mov rdi, qword[arquivo]
-    mov rsi, solnotok
-    cvtss2sd xmm1, [op2]
+    mov rsi, output_notok_format
+    cvtss2sd xmm1, [operando2]
     mov rdx, r8
-    cvtss2sd xmm0, [op1]
+    cvtss2sd xmm0, [operando1]
     call fprintf
 
     movss xmm0, dword[controle]
@@ -150,5 +182,11 @@ escrevesolucaonotok:
     pop rbp
     ret
 
-
+erro_argumentos:
+    ; Trata o erro de argumentos
+    mov rdi, erro_argumentos_msg
+    call printf
+    mov rsp, rbp
+    pop rbp
+    ret
 
