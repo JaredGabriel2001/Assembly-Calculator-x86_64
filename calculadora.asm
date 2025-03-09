@@ -1,23 +1,24 @@
-; nasm -f elf64 calculadora.asm && gcc -no-pie calculadora.o -o calculadora.x
+; link e montagem padrao ("-no-pie -z execstack" para desabilitar a execução de código na pilha, sem essa opção o programa resulta em warning relacionado a segurança):
+; nasm -f elf64 calculadora.asm && gcc -no-pie -z execstack calculadora.o -o calculadora.x
+
+; utilizei para buscar mais informações sobre bugs no gdb:
 ; nasm -f elf64 -g -F dwarf calculadora.asm ; gcc -m64 -no-pie -g calculadora.o -o calculadora.x
 
 section .data
-    solok : db "%.2lf %c %.2lf = %.2lf", 10, 0
-    solnotok : db "%.2lf %c %.2lf = funcionalidade não disponível", 10, 0
-    scanctl : db "%f %c %f", 0
+    solucaoOK : db "%.2lf %c %.2lf = %.2lf", 10, 0
+    solucaoNotOk : db "%.2lf %c %.2lf = funcionalidade não disponível", 10, 0
     file_name db "saida.txt", 0
     file_mode db "a+", 0
-    erro_argumentos_msg db "Erro: Numero incorreto de argumentos", 10, 0
     controle : db "X", 0
 
 section .bss
     operando1 resd 1
     operador resb 1
     operando2 resd 1
-    signaturefile : resd 1
+    arquivo : resd 1
 
 section .text
-    extern printf, fprintf, fopen, fclose, atof, scanf
+    extern fprintf, fopen, fclose, atof
     global main
 
 main:
@@ -30,7 +31,7 @@ main:
     mov rdi, file_name
     mov rsi, file_mode
     call fopen
-    mov [signaturefile], rax
+    mov [arquivo], rax
 
     ; le argv[1] e chama atof (retorna double em xmm0)
     mov r8, [r12 + 8]
@@ -41,13 +42,13 @@ main:
     ; armazena float em [operando1]
     movss [operando1], xmm0
 
-    ; 2) Lê argv[2] e armazena o operador
+    ; le argv[2] e armazena o operador
     mov r9, [r12 + 16]
     mov rdi, r9
     mov al, [rdi]
     mov [operador], al
 
-    ; 3) Lê argv[3] e chama atof (retorna double em xmm0)
+    ; le argv[3] e chama atof (retorna double em xmm0)
     mov r10, [r12 + 24]
     mov rdi, r10
     call atof
@@ -64,6 +65,7 @@ main:
     ;move o char para r8b 
     mov r8b, [operador]
     
+    ;trecho que lida com um "switch case" dos operadores
     cmp r8b, 'a'
     je callAdicao
     
@@ -76,10 +78,10 @@ main:
     cmp r8b, 'd'
     je callDivisao 
 
-    jmp solucaonotok ; Operador inválido
+    jmp solucaonotok ; caso de operadores inválidos
 
-end:
-    mov rdi, qword[signaturefile]
+end: ;encerrar o programa e fechar o arquivo
+    mov rdi, qword[arquivo]
     call fclose
 
     mov rsp, rbp   
@@ -88,7 +90,9 @@ end:
     mov rax, 60
     mov rdi, 0
     syscall
-callAdicao:
+
+; os labels que iniciam em "call" servem para chamar a funçao de operaçao desejada e tambem alterar o simbolo do operador na escrita no arquivo de saida
+callAdicao: 
     mov r8b, "+"
     call adicao
 
@@ -104,6 +108,7 @@ callDivisao:
     mov r8b, "/"
     call divisao
 
+; funcoes das operacoes
 adicao:
     push rbp
     mov rbp, rsp
@@ -173,13 +178,13 @@ solucaonotok:
     call escrevesolucaonotok
     jmp end    
 
-escrevesolucaook:
+escrevesolucaook: ;caso de solucao correta
     push rbp
     mov rbp, rsp
 
     mov rax, 2
-    mov rdi, qword[signaturefile]
-    mov rsi, solok
+    mov rdi, qword[arquivo]
+    mov rsi, solucaoOK
     cvtss2sd xmm2, xmm0
     cvtss2sd xmm1, [operando2]
     mov rdx, r8
@@ -190,13 +195,13 @@ escrevesolucaook:
     pop rbp
     ret
     
-escrevesolucaonotok:
+escrevesolucaonotok: ;caso de solucao incorreta
     push rbp
     mov rbp, rsp
 
     mov rax, 2
-    mov rdi, qword[signaturefile]
-    mov rsi, solnotok
+    mov rdi, qword[arquivo]
+    mov rsi, solucaoNotOk
     cvtss2sd xmm1, [operando2]
     mov rdx, r8
     cvtss2sd xmm0, [operando1]
@@ -207,4 +212,5 @@ escrevesolucaonotok:
     pop rbp
     ret
 
-
+;solução para eliminar warning relacionado a se pilha do programa precisa ser executável ou não.
+section .note.GNU-stack NOBITS ALLOC
