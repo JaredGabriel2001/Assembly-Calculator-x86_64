@@ -1,115 +1,154 @@
-; nasm -f elf64 calculadora.asm ; gcc -m64 -no-pie calculadora.o -o calculadora.x
+; nasm -f elf64 calculadora.asm && gcc -no-pie calculadora.o -o calculadora.x
+
+; nasm -f elf64 -g -F dwarf calculadora.asm ; gcc -m64 -no-pie -g calculadora.o -o calculadora.x
 
 section .data
-    output1 db "Primeiro operando: %.2lf", 10, 0
-    output2 db "Operador: %c", 10, 0
-    output3 db "Segundo operando: %.2lf", 10, 0
-    resultOutput db "Resultado: %.2lf", 10, 0
-    formatFloat db "%lf", 0
-    formatChar db " %c", 0
-    resultFormat db "%.2lf + %.2lf = %.2lf", 10, 0
-    filename db "saida.txt", 0
-    printArgsFormat db "Argumentos: %.2lf %c %.2lf", 10, 0
+    output_ok_format db "%2f %c %2f = %2f", 10, 0
+    output_notok_format db "%2f %c %2f = funcionalidade nao disponivel", 10, 0
+
+    file_name db "saida.txt", 0
+    file_mode db "a+", 0
+    erro_argumentos_msg db "Erro: Numero incorreto de argumentos", 10, 0
+    controle : db "X", 0
 
 section .bss
-    operando1 resq 1
-    operando2 resq 1
+    operando1 resd 1
     operador resb 1
-    resultado resq 1
-    file resq 1
+    operando2 resd 1
+    arquivo resq 1
 
 section .text
+    extern printf, fprintf, fopen, fclose, atof
     global main
-    extern printf, sscanf, fopen, fprintf, fclose
-
-main:
-    ; Prolog
+adicao:
     push rbp
     mov rbp, rsp
 
-    ; Carregar argc e argv
-    mov rdi, [rbp+16] ; argc
-    cmp rdi, 4          ; Verifica se argc == 4 (nome do programa + 3 argumentos)
-    jne end             ; Se não for, termina silenciosamente
+    addss xmm0, xmm1
+    jmp solucaook
 
-    ; Processar argumentos
-    mov rsi, [rbp+24] ; argv
-    mov rsi, [rsi+8]  ; argv[1]
-    mov rdi, formatFloat
-    lea rdx, [operando1]
-    call sscanf        ; Lê o primeiro operando
-    cmp rax, 1
-    jne end
+    mov rsp, rbp
+    pop rbp
 
-    mov rsi, [rbp+24]
-    mov rsi, [rsi+16] ; argv[2]
-    mov rdi, formatChar
-    lea rdx, [operador]
-    call sscanf        ; Lê o operador
-    cmp rax, 1
-    jne end
+    ret
 
-    mov rsi, [rbp+24]
-    mov rsi, [rsi+24] ; argv[3]
-    mov rdi, formatFloat
-    lea rdx, [operando2]
-    call sscanf        ; Lê o segundo operando
-    cmp rax, 1
-    jne end
+subtracao:
+    push rbp
+    mov rbp, rsp
 
-    ; Print dos argumentos
-    mov rdi, printArgsFormat
-    movsd xmm0, [operando1]
-    movzx esi, byte [operador]
-    movsd xmm1, [operando2]
-    call printf
+    subss xmm0, xmm1  
+    jmp solucaook
 
-    ; Exibir os valores lidos
-    mov rdi, output1
-    movsd xmm0, [operando1] ; Passa operando1 no xmm0 para printf
-    call printf
+    mov rsp, rbp
+    pop rbp
 
-    mov rdi, output2
-    movzx rsi, byte [operador] ; Passa operador no rsi para printf
-    call printf
+    ret
 
-    mov rdi, output3
-    movsd xmm0, [operando2] ; Passa operando2 no xmm0 para printf
-    call printf
+multiplicacao:
+    push rbp
+    mov rbp, rsp
 
-    ; Realizar a soma se o operador for 'a'
-    movzx rax, byte [operador]
-    cmp rax, 'a'
-    jne end_calc
+    mulss xmm0, xmm1
+    jmp solucaook
 
-    movsd xmm0, [operando1]
-    addsd xmm0, [operando2]
-    movsd [resultado], xmm0
+    mov rsp, rbp
+    pop rbp
 
-    ; Abrir o arquivo para escrita (append)
-    mov rdi, filename
-    mov rsi, "a"
-    call fopen
-    cmp rax, 0
-    je end_calc
-    mov [file], rax
+    ret
 
-    ; Escrever o resultado no arquivo
-    mov rdi, [file]
-    mov rsi, resultFormat
-    movsd xmm0, [operando1]
-    movsd xmm1, [operando2]
-    movsd xmm2, [resultado]
-    call fprintf
+divisao:
+    push rbp
+    mov rbp, rsp 
 
-    ; Fechar o arquivo
-    mov rdi, [file]
+    cvtss2si r9, xmm1
+
+    mov r11, 0
+    cmp r9, r11
+    je indisponivel1
+
+    divss xmm0, xmm1
+    jmp solucaook
+
+    mov rsp, rbp
+    pop rbp
+
+    ret
+
+    indisponivel1:
+        jmp solucaonotok
+        mov rsp, rbp
+        pop rbp
+
+        ret
+main:
+    
+
+    mov r8b, [operador]
+    
+    cmp r8b, 'a'
+    je adicao
+    
+    cmp r8b, 's' 
+    je subtracao 
+
+    cmp r8b, 'm'
+    je multiplicacao 
+
+    cmp r8b, 'd'
+    je divisao 
+
+end:
+    mov rdi, qword[arquivo]
     call fclose
 
-end_calc:
-    ; Epilog
-    xor rax, rax
-end:
+    mov rsp, rbp   
+    pop rbp
+
+    mov rax, 60
+    mov rdi, 0
+    syscall
+
+solucaook:
+    call escrevesolucaook
+    jmp end
+
+solucaonotok:
+    call escrevesolucaonotok
+    jmp end    
+
+escrevesolucaook:
+    push rbp
+    mov rbp, rsp
+
+    mov rax, 2
+    mov rdi, qword[arquivo]
+    mov rsi, solok
+    cvtss2sd xmm2, xmm0
+    cvtss2sd xmm1, [op2]
+    mov rdx, r8
+    cvtss2sd xmm0, [op1]
+    call fprintf
+
     mov rsp, rbp
     pop rbp
     ret
+    
+escrevesolucaonotok:
+    push rbp
+    mov rbp, rsp
+
+    mov rax, 2
+    mov rdi, qword[arquivo]
+    mov rsi, solnotok
+    cvtss2sd xmm1, [op2]
+    mov rdx, r8
+    cvtss2sd xmm0, [op1]
+    call fprintf
+
+    movss xmm0, dword[controle]
+    mov rsp, rbp
+    pop rbp
+    ret
+
+
+
