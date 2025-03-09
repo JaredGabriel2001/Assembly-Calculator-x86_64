@@ -1,11 +1,10 @@
 ; nasm -f elf64 calculadora.asm && gcc -no-pie calculadora.o -o calculadora.x
-
 ; nasm -f elf64 -g -F dwarf calculadora.asm ; gcc -m64 -no-pie -g calculadora.o -o calculadora.x
 
 section .data
-    output_ok_format db "%2f %c %2f = %2f", 10, 0
-    output_notok_format db "%2f %c %2f = funcionalidade nao disponivel", 10, 0
-
+    solok : db "%.2lf %c %.2lf = %.2lf", 10, 0
+    solnotok : db "%.2lf %c %.2lf = funcionalidade não disponível", 10, 0
+    scanctl : db "%f %c %f", 0
     file_name db "saida.txt", 0
     file_mode db "a+", 0
     erro_argumentos_msg db "Erro: Numero incorreto de argumentos", 10, 0
@@ -15,11 +14,96 @@ section .bss
     operando1 resd 1
     operador resb 1
     operando2 resd 1
-    arquivo resq 1
+    signaturefile : resd 1
 
 section .text
-    extern printf, fprintf, fopen, fclose, atof
+    extern printf, fprintf, fopen, fclose, atof, scanf
     global main
+
+main:
+    push rbp
+    mov rbp, rsp
+
+    ; Salva o ponteiro de argv em r12, estou usando rsi para fopen e anteriormente tive problemas ao usar para ler o primeiro operando
+    mov r12, rsi
+
+    mov rdi, file_name
+    mov rsi, file_mode
+    call fopen
+    mov [signaturefile], rax
+
+    ; le argv[1] e chama atof (retorna double em xmm0)
+    mov r8, [r12 + 8]
+    mov rdi, r8
+    call atof
+    ; converte double -> float (gambiarra)
+    cvtsd2ss xmm0, xmm0
+    ; armazena float em [operando1]
+    movss [operando1], xmm0
+
+    ; 2) Lê argv[2] e armazena o operador
+    mov r9, [r12 + 16]
+    mov rdi, r9
+    mov al, [rdi]
+    mov [operador], al
+
+    ; 3) Lê argv[3] e chama atof (retorna double em xmm0)
+    mov r10, [r12 + 24]
+    mov rdi, r10
+    call atof
+    ; converte double -> float 
+    cvtsd2ss xmm0, xmm0
+    ; armazena float em [operando2]
+    movss [operando2], xmm0
+
+    ; Agora sim, ao carregar de [operando1] e [operando2], temos os valores corretos :D
+    movss xmm0, dword [operando1]
+    movss xmm1, dword [operando2]
+
+    ;comparador para escolher qual instrução usar
+    ;move o char para r8b 
+    mov r8b, [operador]
+    
+    cmp r8b, 'a'
+    je callAdicao
+    
+    cmp r8b, 's' 
+    je callSubtracao 
+
+    cmp r8b, 'm'
+    je callMultiplicacao 
+
+    cmp r8b, 'd'
+    je callDivisao 
+
+    jmp solucaonotok ; Operador inválido
+
+end:
+    mov rdi, qword[signaturefile]
+    call fclose
+
+    mov rsp, rbp   
+    pop rbp
+
+    mov rax, 60
+    mov rdi, 0
+    syscall
+callAdicao:
+    mov r8b, "+"
+    call adicao
+
+callSubtracao:
+    mov r8b, "-"
+    call subtracao
+
+callMultiplicacao:
+    mov r8b, "*"
+    call multiplicacao
+
+callDivisao:
+    mov r8b, "/"
+    call divisao
+
 adicao:
     push rbp
     mov rbp, rsp
@@ -80,65 +164,6 @@ divisao:
         pop rbp
 
         ret
-main:
-    push rbp
-    mov rbp, rsp
-    and rsp, -16 ; Alinha a pilha para fopen e atof
-
-    ; Abre o arquivo para escrita
-    mov rdi, file_name
-    mov rsi, file_mode
-    call fopen
-    mov [arquivo], rax
-
-    ; adicionar leitura de <operando1> <operadora> <operando2> via linha de comando
-    cmp edi, 4 ; Verifica se há 3 argumentos (mais o nome do programa)
-    jne erro_argumentos
-
-    mov rdi, [rsi + 8] ; Primeiro argumento (operando1)
-    call atof
-    movss [operando1], xmm0
-
-    mov rdi, [rsi + 16] ; Segundo argumento (operador)
-    mov al, [rdi]
-    mov [operador], al
-
-    mov rdi, [rsi + 24] ; Terceiro argumento (operando2)
-    call atof
-    movss [operando2], xmm0
-
-    ;passa os operandos para os registradores de parametros
-    movss xmm0, dword [operando1]
-    movss xmm1, dword [operando2]
-
-    ;comparador para escolher qual instrução usar
-    ;move o char para r8b (por causa da compatibilidade do tamanho)
-    mov r8b, [operador]
-    
-    cmp r8b, 'a'
-    je adicao
-    
-    cmp r8b, 's' 
-    je subtracao 
-
-    cmp r8b, 'm'
-    je multiplicacao 
-
-    cmp r8b, 'd'
-    je divisao 
-
-    jmp solucaonotok ; Operador inválido
-
-end:
-    mov rdi, qword[arquivo]
-    call fclose
-
-    mov rsp, rbp   
-    pop rbp
-
-    mov rax, 60
-    mov rdi, 0
-    syscall
 
 solucaook:
     call escrevesolucaook
@@ -153,8 +178,8 @@ escrevesolucaook:
     mov rbp, rsp
 
     mov rax, 2
-    mov rdi, qword[arquivo]
-    mov rsi, output_ok_format
+    mov rdi, qword[signaturefile]
+    mov rsi, solok
     cvtss2sd xmm2, xmm0
     cvtss2sd xmm1, [operando2]
     mov rdx, r8
@@ -170,8 +195,8 @@ escrevesolucaonotok:
     mov rbp, rsp
 
     mov rax, 2
-    mov rdi, qword[arquivo]
-    mov rsi, output_notok_format
+    mov rdi, qword[signaturefile]
+    mov rsi, solnotok
     cvtss2sd xmm1, [operando2]
     mov rdx, r8
     cvtss2sd xmm0, [operando1]
@@ -182,11 +207,4 @@ escrevesolucaonotok:
     pop rbp
     ret
 
-erro_argumentos:
-    ; Trata o erro de argumentos
-    mov rdi, erro_argumentos_msg
-    call printf
-    mov rsp, rbp
-    pop rbp
-    ret
 
