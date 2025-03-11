@@ -1,6 +1,7 @@
-; link e montagem padrao ("-no-pie -z execstack" para desabilitar a execução de código na pilha, sem essa opção o programa resulta em warning relacionado a segurança):
+;-------- link e montagem padrao ("-no-pie -z execstack" para desabilitar a execução de código na pilha, sem essa opção o programa resulta em warning relacionado a segurança):
 ; nasm -f elf64 calculadora.asm && gcc -no-pie -z execstack calculadora.o -o calculadora.x
 
+;-----------------------------------------------------------------------------------------------------
 ; utilizei para buscar mais informações sobre bugs no gdb:
 ; nasm -f elf64 -g -F dwarf calculadora.asm ; gcc -m64 -no-pie -g calculadora.o -o calculadora.x
 
@@ -9,7 +10,6 @@ section .data
     solucaoNotOk : db "%.2lf %c %.2lf = funcionalidade não disponível", 10, 0
     file_name db "saida.txt", 0
     file_mode db "a+", 0
-    controle : db "X", 0
 
 section .bss
     operando1 resd 1
@@ -207,7 +207,6 @@ escrevesolucaonotok: ;caso de solucao incorreta
     cvtss2sd xmm0, [operando1]
     call fprintf
 
-    movss xmm0, dword[controle]
     mov rsp, rbp
     pop rbp
     ret
