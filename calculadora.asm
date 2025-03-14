@@ -1,5 +1,5 @@
 ;-------- link e montagem padrao ("-no-pie -z execstack" para desabilitar a execução de código na pilha, sem essa opção o programa resulta em warning relacionado a segurança):
-; nasm -f elf64 calculadora.asm && gcc -no-pie -z execstack calculadora.o -o calculadora.x
+; nasm -f elf64 calculadora.asm && gcc -no-pie calculadora.o -o calculadora.x
 
 ;-----------------------------------------------------------------------------------------------------
 ; utilizei para buscar mais informações sobre bugs no gdb:
@@ -149,14 +149,12 @@ divisao:
     push rbp
     mov rbp, rsp 
 
-    cvtss2si r9, xmm1
+    xorps xmm2, xmm2       
+    ucomiss xmm1, xmm2     
+    je indisponivel1       
 
-    mov r11, 0
-    cmp r9, r11
-    je indisponivel1
-
-    divss xmm0, xmm1
-    jmp solucaook
+    divss xmm0, xmm1       
+    jmp solucaook          
 
     mov rsp, rbp
     pop rbp
